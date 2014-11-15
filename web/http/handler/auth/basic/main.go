@@ -5,52 +5,61 @@
 package main
 
 import (
-    "encoding/base64"
-    "log"
-    "net/http"
-    "strings"
+	"encoding/base64"
+	"net/http"
+	"strings"
 )
 
-type HttpBasic struct {
-    Login    string
-    Password string
-    Realm    string
+type BasicAuth struct {
+	Login    string
+	Password string
+	Realm    string
 }
 
-func NewHttpBasic(login, password string) *HttpBasic {
-    return &HttpBasic{Login: login, Password: password}
+func NewBasicAuth(login, pass string) *BasicAuth {
+	return &BasicAuth{Login: login, Password: pass}
 }
 
-func (hb *HttpBasic) authenticate(w http.ResponseWriter, code int) {
-    w.Header().Set("WWW-Authenticate", "Basic realm=\""+hb.Realm+"\"")
-    http.Error(w, http.StatusText(code), code)
+func (a *BasicAuth) Authenticate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="`+a.Realm+`"`)
+	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 }
 
-func (hb *HttpBasic) AuthHandler(h http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (a *BasicAuth) BasicAuthHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !a.ValidAuth(r) {
+			a.Authenticate(w, r)
+		} else {
+			h.ServeHTTP(w, r)
+		}
+	})
+}
 
-        if auth := r.Header["Authorization"]; len(auth) > 0 {
-            token := strings.Replace(string(auth[0]), "Basic ", "", 1)
-            s, err := base64.StdEncoding.DecodeString(token)
-            if err != nil {
-                log.Fatal(err)
-            }
+func (a *BasicAuth) ValidAuth(r *http.Request) bool {
+	s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+	if len(s) != 2 || s[0] != "Basic" {
+		return false
+	}
 
-            if parts := strings.Split(string(s), ":"); len(parts) == 2 {
-                if hb.Login == parts[0] && hb.Password == parts[1] {
-                    h.ServeHTTP(w, r)
-                } else {
-                    hb.authenticate(w, 401)
-                }
-            }
-        } else {
-            hb.authenticate(w, 401)
-        }
-    })
+	b, err := base64.StdEncoding.DecodeString(s[1])
+	if err != nil {
+		return false
+	}
+
+	parts := strings.SplitN(string(b), ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+
+	if a.Login == parts[0] && a.Password == parts[1] {
+		return true
+	}
+
+	return false
 }
 
 func main() {
-    auth := NewHttpBasic("gopher", "1234")
-    handler := auth.AuthHandler(http.FileServer(http.Dir("/")))
-    http.ListenAndServe(":8080", handler)
+	auth := NewBasicAuth("foo", "secret")
+	handler := auth.BasicAuthHandler(http.FileServer(http.Dir("/")))
+	http.ListenAndServe("localhost:8080", handler)
 }
