@@ -42,20 +42,20 @@ func (a *BasicAuth) ValidAuth(r *http.Request) bool {
     }
 
     b, err := base64.StdEncoding.DecodeString(s[1])
-        if err != nil {
-            return false
-        }
-
-        parts := strings.SplitN(string(b), ":", 2)
-        if len(parts) != 2 {
-            return false
-        }
-
-        if a.Login == parts[0] && a.Password == parts[1] {
-            return true
-        }
-
+    if err != nil {
         return false
+    }
+
+    parts := strings.SplitN(string(b), ":", 2)
+    if len(parts) != 2 {
+        return false
+    }
+
+    if a.Login == parts[0] && a.Password == parts[1] {
+        return true
+    }
+
+    return false
 }
 
 func main() {
